@@ -9,13 +9,12 @@ import android.view.MenuItem;
 import values.MusicListFragment;
 import values.MusicMapFragment;
 
-public class NavigationActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity {
 
     private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
             = new BottomNavigationView.OnNavigationItemSelectedListener() {
         @Override
         public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-
             switch (item.getItemId()) {
                 case R.id.navigation_list:
                     chooseFragment("list");
