@@ -2,4 +2,6 @@
     <string name="app_name">MusicMap</string>
     <string name="title_list_view">Music List</string>
     <string name="title_map_view">Music Map</string>
+    <string name="title_location_permission">Can MusicMap access your location?</string>
+    <string name="text_location_permission">Without your location, your MusicMap will be empty!</string>
 </resources>
