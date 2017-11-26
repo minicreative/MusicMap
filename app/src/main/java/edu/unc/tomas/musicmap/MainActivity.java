@@ -1,10 +1,14 @@
 package edu.unc.tomas.musicmap;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -21,37 +25,61 @@ import values.MusicMapFragment;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int REQUEST_CODE = 8124;
-    private static final String CLIENT_ID = "f797993a6d4046a697e87452ac86afe8";
-    private static final String REDIRECT_URI = "musicmap://authenticationSuccess";
-    public String accessToken;
+    private Boolean authenticated;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
+        // Setup activity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Setup bottom bar
         BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
+
+        // Setup IntentFilter
+        IntentFilter statusFilter = new IntentFilter(Constants.STATUS_BROADCAST);
+        LocalBroadcastManager.getInstance(this).registerReceiver(statusReceiver, statusFilter);
+
+        // Choose default fragment
         chooseFragment("map");
+
+        // Authenticate Spotify
         updateStatus("Not connected to Spotify", false);
         authenticateSpotify();
     }
+
+    // Setup Spotify Poll Receiver
+    private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+
+            // Get data from intent
+            String message = intent.getStringExtra("message");
+            Boolean error = intent.getBooleanExtra("data", false);
+
+            // Update status
+            updateStatus(message, error);
+        }
+    };
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
 
-        // Check if result is not cancelled & comes from the correct activity
-        if (resultCode != RESULT_CANCELED && requestCode == REQUEST_CODE) {
-            AuthenticationResponse response = AuthenticationClient.getResponse(resultCode, intent);
+        // Handle Spotify Authentication results
+        if (requestCode == Constants.AUTH_REQUEST_CODE) {
+            if (resultCode != RESULT_CANCELED) {
+                AuthenticationResponse response = AuthenticationClient.getResponse(resultCode, intent);
 
-            // Display error message on unsuccessful response
-            if (response.getError() != null) authenticationError();
+                // Display error message on unsuccessful response
+                if (response.getError() != null) authenticationError();
 
-            // Save access token on successful response
-            else if (response.getType() == AuthenticationResponse.Type.TOKEN) {
-                updateStatus("Connected to Spotify!", false);
-                accessToken = response.getAccessToken();
+                    // Save access token on successful response
+                else if (response.getType() == AuthenticationResponse.Type.TOKEN) {
+                    authenticationSuccess(response.getAccessToken());
+                }
             }
         }
     }
@@ -92,12 +120,12 @@ public class MainActivity extends AppCompatActivity {
 
     // Authentication Spotify: authenticates the current user
     protected void authenticateSpotify() {
-        AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(CLIENT_ID,
+        AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(Constants.SPOTIFY_CLIENT_ID,
                 AuthenticationResponse.Type.TOKEN,
-                REDIRECT_URI);
+                Constants.AUTH_REDIRECT_URI);
         builder.setScopes(new String[]{"user-read-playback-state", "user-read-currently-playing"});
         AuthenticationRequest request = builder.build();
-        AuthenticationClient.openLoginActivity(this, REQUEST_CODE, request);
+        AuthenticationClient.openLoginActivity(this, Constants.AUTH_REQUEST_CODE, request);
     }
 
     // Update Status: updates status background and message
@@ -132,16 +160,24 @@ public class MainActivity extends AppCompatActivity {
         });
         alert.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int whichButton) {
-                Log.v("DEBUG", "trying to cancel");
                 dialog.cancel();
             }
         });
         alert.show();
     }
 
+    // Authentication Success: handles successful authentication
+    public void authenticationSuccess(String accessToken) {
+        authenticated = true;
+        updateStatus("Connected to Spotify!", false);
+        Intent shopifyPollIntent = new Intent(this, SpotifyPollService.class);
+        shopifyPollIntent.putExtra("accessToken", accessToken);
+        this.startService(shopifyPollIntent);
+    };
+
     // Status Click: handles click on status bar
     public void statusClick(View view) {
-        if (accessToken == null) authenticateSpotify();
+        if (!authenticated) authenticateSpotify();
     };
 
 }
