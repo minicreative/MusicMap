@@ -1,19 +1,14 @@
 package edu.unc.tomas.musicmap;
 
-import android.Manifest;
 import android.app.IntentService;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.IntentFilter;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
-import android.os.Bundle;
 import android.os.Handler;
 import android.support.annotation.Nullable;
-import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -52,28 +47,8 @@ public class SpotifyPollService extends IntentService {
     private RequestQueue queue;
 
     // Location variables
-    LocationManager locationManager;
-    LocationListener locationListener = new LocationListener() {
-        @Override
-        public void onLocationChanged(Location location) {
-
-        }
-
-        @Override
-        public void onStatusChanged(String s, int i, Bundle bundle) {
-
-        }
-
-        @Override
-        public void onProviderEnabled(String s) {
-
-        }
-
-        @Override
-        public void onProviderDisabled(String s) {
-
-        }
-    };
+    private Double currentLatitude;
+    private Double currentLongitude;
 
     // Database Variables
     SQLiteDatabase db;
@@ -89,11 +64,33 @@ public class SpotifyPollService extends IntentService {
 
     @Override
     protected void onHandleIntent(@Nullable Intent intent) {
+
+        // Save access token from intent
         accessToken = intent.getStringExtra("accessToken");
+
+        // Initialize database
         db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+        // Setup location receiver
+        IntentFilter locationFilter = new IntentFilter(Constants.LOCATION_BROADCAST);
+        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver, locationFilter);
+
+        // Start location service
+        Intent locationServiceIntent = new Intent(this, LocationService.class);
+        this.startService(locationServiceIntent);
+
+        // Start polling timer
         startPolling();
     }
+
+    // Setup Location Receiver
+    private BroadcastReceiver locationReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            currentLatitude = intent.getDoubleExtra("latitude", 0);
+            currentLongitude = intent.getDoubleExtra("longitude", 0);
+        }
+    };
 
     private void handleAPIResponse(JSONObject response) {
         // Handle response in JSON Exception catch block
@@ -101,6 +98,9 @@ public class SpotifyPollService extends IntentService {
 
             // If user is playing a song...
             if (response.getBoolean("is_playing")) {
+
+                // Update listening boolean
+                wasLastListening = true;
 
                 // Get song object
                 JSONObject songObject = response.getJSONObject("item");
@@ -174,16 +174,8 @@ public class SpotifyPollService extends IntentService {
         // Get latitude and longitude
         Double latitude = new Double(0);
         Double longitude = new Double(0);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-            if (location != null) {
-                latitude = location.getLatitude();
-                longitude = location.getLongitude();
-            } else {
-                Log.v("LOCATION", "has permission but no location!");
-            }
-        }
+        if (currentLatitude != null) latitude = currentLatitude;
+        if (currentLongitude != null) longitude = currentLongitude;
 
         // Make new GUID
         Cursor listenCountCursor = db.rawQuery("SELECT ID FROM Listens", null);
@@ -195,9 +187,9 @@ public class SpotifyPollService extends IntentService {
         insertContent += ", " + time.toString();
         insertContent += ", " + latitude.toString();
         insertContent += ", " + longitude.toString();
-        insertContent += ", '" + name + "'";
-        insertContent += ", '" + artist + "'";
-        insertContent += ", '" + album + "'";
+        insertContent += ", '" + prepareForSQL(name) + "'";
+        insertContent += ", '" + prepareForSQL(artist) + "'";
+        insertContent += ", '" + prepareForSQL(album) + "'";
         insertContent += ", '" + albumArt + "'";
         String insertQuery = "INSERT INTO Listens VALUES (" + insertContent + ");";
         db.execSQL(insertQuery);
@@ -208,8 +200,13 @@ public class SpotifyPollService extends IntentService {
         dataBroadcast();
     };
 
+    private String prepareForSQL(String string) {
+        string = string.replace("'", "''");
+        return string;
+    };
+
     // Poll: Checks Spotify for status of music player
-    private void poll () {
+    private void poll() {
 
         // Setup the request URL
         String url = Constants.SPOTIFY_API + "/v1/me/player/currently-playing";
@@ -245,25 +242,27 @@ public class SpotifyPollService extends IntentService {
                 }) {
             @Override
             public Map<String, String> getHeaders() throws AuthFailureError {
-                Map<String, String>  params = new HashMap<String, String>();
-                params.put("Authorization", "Bearer "+accessToken);
+                Map<String, String> params = new HashMap<String, String>();
+                params.put("Authorization", "Bearer " + accessToken);
                 params.put("Content-Type", "application/json");
                 return params;
             }
         };
 
         queue.add(request);
-    };
+    }
+
+    ;
 
     // Start Polling: starts polling timer
     private void startPolling() {
+        final Context self = this;
         timer = new Timer();
         timerTask = new TimerTask() {
             public void run() {
                 handler.post(new Runnable() {
                     public void run() {
                         poll();
-                        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000L,500.0f, locationListener);
                     }
                 });
             }

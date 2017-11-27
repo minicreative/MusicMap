@@ -8,8 +8,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.sqlite.SQLiteDatabase;
-import android.location.Location;
-import android.location.LocationManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.BottomNavigationView;
@@ -17,7 +15,6 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
@@ -31,7 +28,7 @@ import values.MusicMapFragment;
 
 public class MainActivity extends AppCompatActivity {
 
-    private Boolean authenticated;
+    private Boolean authenticated = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
         ListensColumns += ", AlbumArt TEXT";
         db.execSQL("CREATE TABLE IF NOT EXISTS Listens ("+ ListensColumns + ");");
 
-        // Setup IntentFilter
+        // Setup status receiver
         IntentFilter statusFilter = new IntentFilter(Constants.STATUS_BROADCAST);
         LocalBroadcastManager.getInstance(this).registerReceiver(statusReceiver, statusFilter);
 

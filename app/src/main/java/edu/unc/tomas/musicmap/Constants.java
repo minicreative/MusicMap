@@ -14,4 +14,5 @@ public class Constants {
     public static final String DB = "MusicMapListeningHistory";
     public static final String STATUS_BROADCAST = "edu.unc.tomas.musicmap.statusBroadcast";
     public static final String DATA_BROADCAST = "edu.unc.tomas.musicmap.dataBroadcast";
+    public static final String LOCATION_BROADCAST = "edu.unc.tomas.musicmap.locationBroadcast";
 }
