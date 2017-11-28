@@ -197,7 +197,7 @@ public class SpotifyPollService extends IntentService {
         Log.v("DATABASE", insertContent);
 
         // Broadcast data update
-        dataBroadcast();
+        dataBroadcast(GUID);
     };
 
     private String prepareForSQL(String string) {
@@ -287,8 +287,9 @@ public class SpotifyPollService extends IntentService {
     }
 
     // Data Broadcast: notifies listeners to updates with database
-    private void dataBroadcast () {
+    private void dataBroadcast (Integer GUID) {
         Intent dataIntent = new Intent(Constants.DATA_BROADCAST);
+        dataIntent.putExtra("GUID", GUID);
         LocalBroadcastManager.getInstance(this).sendBroadcast(dataIntent);
     };
 }

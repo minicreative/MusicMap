@@ -5,7 +5,7 @@ package edu.unc.tomas.musicmap;
  */
 
 public class Constants {
-    public static final String SPOTIFY_CLIENT_ID = "f797993a6d4046a697e87452ac86afe8";
+    public static final String SPOTIFY_CLIENT_ID = "5e3c9d6a7d104f828efb2a54c233f3ef";
     public static final String AUTH_REDIRECT_URI = "musicmap://authenticationSuccess";
     public static final String SPOTIFY_API = "https://api.spotify.com";
     public static final int AUTH_REQUEST_CODE = 8124;

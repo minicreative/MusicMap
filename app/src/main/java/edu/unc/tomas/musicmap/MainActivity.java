@@ -68,7 +68,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Make sure database exists
-        this.deleteDatabase(Constants.DB);
         SQLiteDatabase db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
         String ListensColumns = "GUID INT PRIMARY KEY";
         ListensColumns += ", ID TEXT";
@@ -155,20 +154,20 @@ public class MainActivity extends AppCompatActivity {
             case "map":
                 transaction.replace(R.id.rootLayout, new MusicMapFragment());
                 break;
-            default:
-                transaction.replace(R.id.rootLayout, new MusicMapFragment());
         }
         transaction.commit();
     };
 
     // Authentication Spotify: authenticates the current user
     protected void authenticateSpotify() {
-        AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(Constants.SPOTIFY_CLIENT_ID,
-                AuthenticationResponse.Type.TOKEN,
-                Constants.AUTH_REDIRECT_URI);
-        builder.setScopes(new String[]{"user-read-playback-state", "user-read-currently-playing"});
-        AuthenticationRequest request = builder.build();
-        AuthenticationClient.openLoginActivity(this, Constants.AUTH_REQUEST_CODE, request);
+        if (!authenticated) {
+            AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(Constants.SPOTIFY_CLIENT_ID,
+                    AuthenticationResponse.Type.TOKEN,
+                    Constants.AUTH_REDIRECT_URI);
+            builder.setScopes(new String[]{"user-read-playback-state", "user-read-currently-playing"});
+            AuthenticationRequest request = builder.build();
+            AuthenticationClient.openLoginActivity(this, Constants.AUTH_REQUEST_CODE, request);
+        }
     }
 
     // Update Status: updates status background and message
