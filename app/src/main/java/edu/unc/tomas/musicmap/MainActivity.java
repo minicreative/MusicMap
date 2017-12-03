@@ -15,6 +15,8 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
@@ -30,7 +32,10 @@ import values.MusicMapFragment;
 
 public class MainActivity extends AppCompatActivity {
 
+    SQLiteDatabase db;
     boolean connectedToSpotify = false;
+
+    // SETUP =======================================================================================
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,12 +44,16 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Section action bar
+        Toolbar toolbar = (Toolbar) findViewById(R.id.action_bar);
+        setSupportActionBar(toolbar);
+
         // Setup bottom bar
         BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
 
         // Make sure database exists
-        SQLiteDatabase db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
+        db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
         String ListensColumns = "GUID INT PRIMARY KEY";
         ListensColumns += ", ID TEXT";
         ListensColumns += ", Time INT";
@@ -91,12 +100,14 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).registerReceiver(statusReceiver, statusFilter);
 
         // Choose default fragment
-        chooseFragment("map");
+        chooseFragment("map", false);
 
         // Authenticate Spotify
         updateStatus("Not connected to Spotify", false);
         authenticateSpotify();
     }
+
+    // LISTENERS ===================================================================================
 
     // Setup Spotify Poll Receiver
     private BroadcastReceiver statusReceiver = new BroadcastReceiver() {
@@ -132,6 +143,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.action, menu);
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    // Action Bar Listener
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_delete:
+                emptyListens();
+                return true;
+        }
+        return false;
+    }
+
     // Bottom Navigation listener
     private BottomNavigationView.OnNavigationItemSelectedListener mOnNavigationItemSelectedListener
             = new BottomNavigationView.OnNavigationItemSelectedListener() {
@@ -139,10 +167,10 @@ public class MainActivity extends AppCompatActivity {
         public boolean onNavigationItemSelected(@NonNull MenuItem item) {
             switch (item.getItemId()) {
                 case R.id.navigation_list:
-                    chooseFragment("list");
+                    chooseFragment("list", false);
                     return true;
                 case R.id.navigation_map:
-                    chooseFragment("map");
+                    chooseFragment("map", false);
                     return true;
             }
             return false;
@@ -150,10 +178,22 @@ public class MainActivity extends AppCompatActivity {
 
     };
 
+    // VIEW FUNCTIONS ==============================================================================
+
     // Choose Fragment: changes the view fragment
     private MusicMapFragment mapFragment;
     private MusicListFragment listFragment;
-    protected void chooseFragment(String fragmentName) {
+    protected void chooseFragment(String fragmentName, boolean reload) {
+
+        if (reload) {
+            android.support.v4.app.FragmentTransaction clearTransaction = getSupportFragmentManager().beginTransaction();
+            clearTransaction.remove(mapFragment);
+            clearTransaction.remove(listFragment);
+            mapFragment = null;
+            listFragment = null;
+            clearTransaction.commit();
+        }
+
         android.support.v4.app.FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         switch(fragmentName) {
             case "list":
@@ -242,5 +282,11 @@ public class MainActivity extends AppCompatActivity {
     public void statusClick(View view) {
         if (!connectedToSpotify) authenticateSpotify();
     };
+
+    private void emptyListens () {
+        db.execSQL("DELETE FROM Listens;");
+        android.support.v4.app.FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+        chooseFragment("map", true);
+    }
 
 }

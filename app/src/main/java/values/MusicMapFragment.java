@@ -9,6 +9,8 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
@@ -29,6 +31,7 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.nostra13.universalimageloader.core.ImageLoader;
+import com.nostra13.universalimageloader.core.assist.FailReason;
 import com.nostra13.universalimageloader.core.listener.SimpleImageLoadingListener;
 
 import java.text.SimpleDateFormat;
@@ -138,30 +141,55 @@ public class MusicMapFragment extends Fragment implements OnMapReadyCallback {
         // Add marker to map if location is not null (0, 0)
         if (Math.abs(latitude) > 0 && Math.abs(longitude) > 0) {
 
+            // Create options for marker
+            final MarkerOptions options = new MarkerOptions();
+
+            // Add position, title and snippet
+            options.position(position);
+            options.title(name);
+            options.snippet(artist + " - " + album + ", " + timeString);
+            options.zIndex(zIndex);
+
             // Create new imageLoader callback
             imageLoader.loadImage(albumArt, new SimpleImageLoadingListener() {
                 @Override
                 public void onLoadingComplete(String imageUri, View view, Bitmap loadedImage) {
 
-                    // Create options
-                    MarkerOptions options = new MarkerOptions();
-
-                    // Add position, title and snippet
-                    options.position(position);
-                    options.title(name);
-                    options.snippet(artist + " - " + album + ", " + timeString);
-                    options.zIndex(zIndex);
-
-                    // Add icon
+                    // Add with album artwork icon
                     BitmapDescriptor bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(loadedImage);
                     options.icon(bitmapDescriptor);
-
-                    // Add marker to map
                     map.addMarker(options);
-                }
+                };
+                @Override
+                public void onLoadingFailed (String imageUri, View view, FailReason failReason) {
+
+                    // Add with generic icon
+                    BitmapDescriptor bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(getBitmap(R.drawable.album));
+                    options.icon(bitmapDescriptor);
+                    map.addMarker(options);
+
+                };
+                @Override
+                public void onLoadingCancelled (String imageUri, View view) {
+
+                    // Add with generic icon
+                    BitmapDescriptor bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(getBitmap(R.drawable.album));
+                    options.icon(bitmapDescriptor);
+                    map.addMarker(options);
+                };
             });
         }
-    };
+    }
+
+    private Bitmap getBitmap(int drawableRes) {
+        Drawable drawable = getResources().getDrawable(drawableRes);
+        Canvas canvas = new Canvas();
+        Bitmap bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+        canvas.setBitmap(bitmap);
+        drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+        drawable.draw(canvas);
+        return bitmap;
+    }
 
     // Setup Location Receiver
     private BroadcastReceiver locationReceiver = new BroadcastReceiver() {
