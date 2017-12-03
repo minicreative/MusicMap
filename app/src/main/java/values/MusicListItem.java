@@ -10,6 +10,7 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import com.nostra13.universalimageloader.core.ImageLoader;
 import com.squareup.picasso.Picasso;
 
 import java.io.InputStream;
@@ -47,8 +48,9 @@ public class MusicListItem extends LinearLayout {
         String timeString = format.format(new Date((long)time*1000));
         timeView.setText(timeString);
 
-        // Load image with Picasso
-        Picasso.with(this.context).load(albumArt).into(imageView);
+        // Load image with UIL
+        ImageLoader imageLoader = ImageLoader.getInstance();
+        imageLoader.displayImage(albumArt, imageView);
     }
 
 }

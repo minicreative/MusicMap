@@ -19,6 +19,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
 
+import com.nostra13.universalimageloader.core.ImageLoader;
+import com.nostra13.universalimageloader.core.ImageLoaderConfiguration;
 import com.spotify.sdk.android.authentication.AuthenticationClient;
 import com.spotify.sdk.android.authentication.AuthenticationRequest;
 import com.spotify.sdk.android.authentication.AuthenticationResponse;
@@ -28,7 +30,7 @@ import values.MusicMapFragment;
 
 public class MainActivity extends AppCompatActivity {
 
-    private Boolean authenticated = false;
+    boolean connectedToSpotify = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +42,23 @@ public class MainActivity extends AppCompatActivity {
         // Setup bottom bar
         BottomNavigationView navigation = (BottomNavigationView) findViewById(R.id.navigation);
         navigation.setOnNavigationItemSelectedListener(mOnNavigationItemSelectedListener);
+
+        // Make sure database exists
+        SQLiteDatabase db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
+        String ListensColumns = "GUID INT PRIMARY KEY";
+        ListensColumns += ", ID TEXT";
+        ListensColumns += ", Time INT";
+        ListensColumns += ", Latitude REAL";
+        ListensColumns += ", Longitude REAL";
+        ListensColumns += ", Name TEXT";
+        ListensColumns += ", Artist TEXT";
+        ListensColumns += ", Album TEXT";
+        ListensColumns += ", AlbumArt TEXT";
+        db.execSQL("CREATE TABLE IF NOT EXISTS Listens ("+ ListensColumns + ");");
+
+        // Setup image loader
+        ImageLoaderConfiguration config = new ImageLoaderConfiguration.Builder(this).build();
+        ImageLoader.getInstance().init(config);
 
         // Ask for location permissions
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
@@ -66,19 +85,6 @@ public class MainActivity extends AppCompatActivity {
                             Constants.LOCATION_PERMISSION_CODE);
                 }
         }
-
-        // Make sure database exists
-        SQLiteDatabase db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
-        String ListensColumns = "GUID INT PRIMARY KEY";
-        ListensColumns += ", ID TEXT";
-        ListensColumns += ", Time INT";
-        ListensColumns += ", Latitude REAL";
-        ListensColumns += ", Longitude REAL";
-        ListensColumns += ", Name TEXT";
-        ListensColumns += ", Artist TEXT";
-        ListensColumns += ", Album TEXT";
-        ListensColumns += ", AlbumArt TEXT";
-        db.execSQL("CREATE TABLE IF NOT EXISTS Listens ("+ ListensColumns + ");");
 
         // Setup status receiver
         IntentFilter statusFilter = new IntentFilter(Constants.STATUS_BROADCAST);
@@ -145,14 +151,26 @@ public class MainActivity extends AppCompatActivity {
     };
 
     // Choose Fragment: changes the view fragment
+    private MusicMapFragment mapFragment;
+    private MusicListFragment listFragment;
     protected void chooseFragment(String fragmentName) {
         android.support.v4.app.FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         switch(fragmentName) {
             case "list":
-                transaction.replace(R.id.rootLayout, new MusicListFragment());
+                if (listFragment == null) {
+                    listFragment = new MusicListFragment();
+                    transaction.add(R.id.rootLayout, listFragment);
+                }
+                if (mapFragment != null) transaction.hide(mapFragment);
+                transaction.show(listFragment);
                 break;
             case "map":
-                transaction.replace(R.id.rootLayout, new MusicMapFragment());
+                if (mapFragment == null) {
+                    mapFragment = new MusicMapFragment();
+                    transaction.add(R.id.rootLayout, mapFragment);
+                }
+                if (listFragment != null) transaction.hide(listFragment);
+                transaction.show(mapFragment);
                 break;
         }
         transaction.commit();
@@ -160,14 +178,12 @@ public class MainActivity extends AppCompatActivity {
 
     // Authentication Spotify: authenticates the current user
     protected void authenticateSpotify() {
-        if (!authenticated) {
-            AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(Constants.SPOTIFY_CLIENT_ID,
-                    AuthenticationResponse.Type.TOKEN,
-                    Constants.AUTH_REDIRECT_URI);
-            builder.setScopes(new String[]{"user-read-playback-state", "user-read-currently-playing"});
-            AuthenticationRequest request = builder.build();
-            AuthenticationClient.openLoginActivity(this, Constants.AUTH_REQUEST_CODE, request);
-        }
+        AuthenticationRequest.Builder builder = new AuthenticationRequest.Builder(Constants.SPOTIFY_CLIENT_ID,
+                AuthenticationResponse.Type.TOKEN,
+                Constants.AUTH_REDIRECT_URI);
+        builder.setScopes(new String[]{"user-read-playback-state", "user-read-currently-playing"});
+        AuthenticationRequest request = builder.build();
+        AuthenticationClient.openLoginActivity(this, Constants.AUTH_REQUEST_CODE, request);
     }
 
     // Update Status: updates status background and message
@@ -210,16 +226,21 @@ public class MainActivity extends AppCompatActivity {
 
     // Authentication Success: handles successful authentication
     public void authenticationSuccess(String accessToken) {
-        authenticated = true;
-        updateStatus("Connected to Spotify!", false);
+
+        // Restart service
         Intent shopifyPollIntent = new Intent(this, SpotifyPollService.class);
         shopifyPollIntent.putExtra("accessToken", accessToken);
+        this.stopService(shopifyPollIntent);
         this.startService(shopifyPollIntent);
+
+        // Update status
+        connectedToSpotify = true;
+        updateStatus("Connected to Spotify!", false);
     };
 
     // Status Click: handles click on status bar
     public void statusClick(View view) {
-        if (!authenticated) authenticateSpotify();
+        if (!connectedToSpotify) authenticateSpotify();
     };
 
 }

@@ -1,14 +1,19 @@
 package edu.unc.tomas.musicmap;
 
-import android.app.IntentService;
-import android.content.BroadcastReceiver;
+import android.Manifest;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.location.Location;
+import android.location.LocationManager;
+import android.os.Bundle;
 import android.os.Handler;
+import android.os.IBinder;
 import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -31,15 +36,14 @@ import org.json.JSONObject;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
 
-public class SpotifyPollService extends IntentService {
+public class SpotifyPollService extends Service {
 
-    // Timer variables
-    private Timer timer;
-    private TimerTask timerTask;
-    private Handler handler = new Handler();
+    // VARIABLES ===================================================================================
+
+    // Handler & runnable variables
+    private Handler handler;
+    private Runnable runnable;
 
     // Request Variables
     private Cache cache;
@@ -47,8 +51,10 @@ public class SpotifyPollService extends IntentService {
     private RequestQueue queue;
 
     // Location variables
-    private Double currentLatitude;
-    private Double currentLongitude;
+    private LocationManager locationManager = null;
+    private static final int LOCATION_INTERVAL = 1000;
+    private static final float LOCATION_DISTANCE = 10f;
+    Location lastLocation;
 
     // Database Variables
     SQLiteDatabase db;
@@ -58,40 +64,95 @@ public class SpotifyPollService extends IntentService {
     private Boolean wasLastListening = false;
     private String lastPlayedSongID = "";
 
-    public SpotifyPollService() {
-        super("SpotifyPollService");
-    }
+    // MAIN SERVICE FUNCTIONS ======================================================================
+
+    // Constructor
+    public SpotifyPollService() {}
 
     @Override
-    protected void onHandleIntent(@Nullable Intent intent) {
+    public int onStartCommand(Intent intent, int flags, int startId) {
 
-        // Save access token from intent
-        accessToken = intent.getStringExtra("accessToken");
+        // Set access token
+        if (intent != null) accessToken = intent.getStringExtra("accessToken");
+
+        // Initialize location updates
+        initializeLocationUpdates();
 
         // Initialize database
         db = this.openOrCreateDatabase(Constants.DB, Context.MODE_PRIVATE, null);
 
-        // Setup location receiver
-        IntentFilter locationFilter = new IntentFilter(Constants.LOCATION_BROADCAST);
-        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver, locationFilter);
+        // Start polling handler
+        handler = new Handler();
+        runnable = new Runnable() {
+            @Override
+            public void run() {
+                poll();
+                handler.postDelayed(this, Constants.POLL_DELAY);
+            }
+        };
+        handler.postDelayed(runnable, 100);
 
-        // Start location service
-        Intent locationServiceIntent = new Intent(this, LocationService.class);
-        this.startService(locationServiceIntent);
-
-        // Start polling timer
-        startPolling();
+        return super.onStartCommand(intent, flags, startId);
     }
 
-    // Setup Location Receiver
-    private BroadcastReceiver locationReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            currentLatitude = intent.getDoubleExtra("latitude", 0);
-            currentLongitude = intent.getDoubleExtra("longitude", 0);
-        }
-    };
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
+    // POLLING FUNCTIONS ===========================================================================
+
+    // Poll: Checks Spotify for status of music player
+    private void poll() {
+
+        if (accessToken == null) return;
+
+        // Setup the request URL
+        String url = Constants.SPOTIFY_API + "/v1/me/player/currently-playing";
+
+        // Start the request queue
+        cache = new DiskBasedCache(this.getCacheDir(), 1024 * 1024);
+        network = new BasicNetwork(new HurlStack());
+        queue = new RequestQueue(cache, network);
+        queue.start();
+
+        // Make request to Shopify API
+        JsonObjectRequest request = new JsonObjectRequest
+                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+
+                    @Override
+                    public void onResponse(JSONObject response) {
+                        handleAPIResponse(response);
+                        queue.stop();
+                    }
+                }, new Response.ErrorListener() {
+
+                    @Override
+                    public void onErrorResponse(VolleyError error) {
+                        if (error.getMessage() != null) Log.v("REQUEST ERROR", error.getMessage());
+                        if (error.networkResponse != null) {
+                            if (error.networkResponse.data != null) {
+                                Log.v("REQUEST ERROR", new String(error.networkResponse.data));
+                            }
+                        }
+                        statusBroadcast("Could not get data from Spotify", true);
+                        queue.stop();
+                    }
+                }) {
+            @Override
+            public Map<String, String> getHeaders() throws AuthFailureError {
+                Map<String, String> params = new HashMap<String, String>();
+                params.put("Authorization", "Bearer " + accessToken);
+                params.put("Content-Type", "application/json");
+                return params;
+            }
+        };
+
+        queue.add(request);
+    }
+
+    // Handle API Response: handles response from Spotify API
     private void handleAPIResponse(JSONObject response) {
         // Handle response in JSON Exception catch block
         try {
@@ -162,8 +223,9 @@ public class SpotifyPollService extends IntentService {
         } catch (JSONException e) {
             Log.v("JSON", "JSON Error");
         }
-        ;
     }
+
+    // DATABASE FUNCTIONS ==========================================================================
 
     // Add Track to Database: adds track information to the database
     private void addTrackToDatabase(String id, String name, String artist, String album, String albumArt) {
@@ -174,8 +236,10 @@ public class SpotifyPollService extends IntentService {
         // Get latitude and longitude
         Double latitude = new Double(0);
         Double longitude = new Double(0);
-        if (currentLatitude != null) latitude = currentLatitude;
-        if (currentLongitude != null) longitude = currentLongitude;
+        if (lastLocation != null) {
+            latitude = lastLocation.getLatitude();
+            longitude = lastLocation.getLongitude();
+        }
 
         // Make new GUID
         Cursor listenCountCursor = db.rawQuery("SELECT ID FROM Listens", null);
@@ -194,92 +258,46 @@ public class SpotifyPollService extends IntentService {
         String insertQuery = "INSERT INTO Listens VALUES (" + insertContent + ");";
         db.execSQL(insertQuery);
 
-        Log.v("DATABASE", insertContent);
-
         // Broadcast data update
         dataBroadcast(GUID);
-    };
+    }
 
+    // Prepare For SQL: ensures String won't break SQL query
     private String prepareForSQL(String string) {
         string = string.replace("'", "''");
         return string;
-    };
-
-    // Poll: Checks Spotify for status of music player
-    private void poll() {
-
-        // Setup the request URL
-        String url = Constants.SPOTIFY_API + "/v1/me/player/currently-playing";
-
-        // Start the request queue
-        cache = new DiskBasedCache(this.getCacheDir(), 1024 * 1024);
-        network = new BasicNetwork(new HurlStack());
-        queue = new RequestQueue(cache, network);
-        queue.start();
-
-        // Make request to Shopify API
-        JsonObjectRequest request = new JsonObjectRequest
-                (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
-
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        handleAPIResponse(response);
-                        queue.stop();
-                    }
-                }, new Response.ErrorListener() {
-
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        if (error.getMessage() != null) Log.v("REQUEST ERROR", error.getMessage());
-                        if (error.networkResponse != null) {
-                            if (error.networkResponse.data != null) {
-                                Log.v("REQUEST ERROR", new String(error.networkResponse.data));
-                            }
-                        }
-                        statusBroadcast("Could not get data from Spotify", true);
-                        queue.stop();
-                    }
-                }) {
-            @Override
-            public Map<String, String> getHeaders() throws AuthFailureError {
-                Map<String, String> params = new HashMap<String, String>();
-                params.put("Authorization", "Bearer " + accessToken);
-                params.put("Content-Type", "application/json");
-                return params;
-            }
-        };
-
-        queue.add(request);
     }
 
-    ;
+    // LOCATION FUNCTIONS ==========================================================================
 
-    // Start Polling: starts polling timer
-    private void startPolling() {
-        final Context self = this;
-        timer = new Timer();
-        timerTask = new TimerTask() {
-            public void run() {
-                handler.post(new Runnable() {
-                    public void run() {
-                        poll();
-                    }
-                });
-            }
-        };
-        timer.schedule(timerTask, 0, Constants.POLL_DELAY);
-    }
-
-    // Stop Polling: stops polling timer
-    private void stopPolling() {
-        if (timer != null) {
-            timer.cancel();
-            timer.purge();
+    // Location Listener: listens to updates from Android location
+    private class LocationListener implements android.location.LocationListener {
+        public LocationListener() {}
+        @Override
+        public void onLocationChanged(Location location) {
+            lastLocation = location;
+            locationBroadcast();
         }
+        @Override
+        public void onProviderDisabled(String provider) {}
+        @Override
+        public void onProviderEnabled(String provider) {}
+        @Override
+        public void onStatusChanged(String provider, int status, Bundle extras) {}
     }
+
+    private void initializeLocationUpdates() {
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, LOCATION_INTERVAL, LOCATION_DISTANCE, new LocationListener());
+        }
+
+    }
+
+    // BROADCASTS ==================================================================================
 
     // Status Broadcast: notifies listeners to update status
-    private void statusBroadcast (String message, Boolean error) {
+    private void statusBroadcast(String message, Boolean error) {
         Intent statusIntent = new Intent(Constants.STATUS_BROADCAST);
         statusIntent.putExtra("message", message);
         statusIntent.putExtra("error", error);
@@ -287,9 +305,17 @@ public class SpotifyPollService extends IntentService {
     }
 
     // Data Broadcast: notifies listeners to updates with database
-    private void dataBroadcast (Integer GUID) {
+    private void dataBroadcast(Integer GUID) {
         Intent dataIntent = new Intent(Constants.DATA_BROADCAST);
         dataIntent.putExtra("GUID", GUID);
         LocalBroadcastManager.getInstance(this).sendBroadcast(dataIntent);
-    };
+    }
+
+    // Location Broadcast: notifies listeners with updated location
+    private void locationBroadcast() {
+        Intent locationIntent = new Intent(Constants.LOCATION_BROADCAST);
+        locationIntent.putExtra("latitude", lastLocation.getLatitude());
+        locationIntent.putExtra("longitude", lastLocation.getLongitude());
+        LocalBroadcastManager.getInstance(this).sendBroadcast(locationIntent);
+    }
 }

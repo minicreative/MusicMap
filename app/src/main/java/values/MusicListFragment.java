@@ -26,7 +26,6 @@ public class MusicListFragment extends Fragment {
 
     SQLiteDatabase db;
     LinearLayout list;
-    final String baseQuery = "SELECT GUID, ID, Time, Latitude, Longitude, Name, Artist, Album, AlbumArt FROM Listens";
 
     @Override
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
@@ -39,7 +38,7 @@ public class MusicListFragment extends Fragment {
         list = (LinearLayout) getView().findViewById(R.id.musicList);
 
         // Create full table initially
-        createTableFromDatabase();
+        createAllItemsInDatabase();
 
         // Setup data receiver
         IntentFilter dataFilter = new IntentFilter(Constants.DATA_BROADCAST);
@@ -57,7 +56,7 @@ public class MusicListFragment extends Fragment {
         public void onReceive(Context context, Intent intent) {
             Integer GUID = intent.getIntExtra("GUID", 0);
             if (db != null) {
-                String itemQuery = baseQuery+" WHERE GUID = "+GUID.toString();
+                String itemQuery = Constants.LISTEN_QUERY+" WHERE GUID = "+GUID.toString();
                 Cursor cursor = db.rawQuery(itemQuery, null);
                 if (cursor.getCount() > 0) {
                     createItemWithCursor(cursor, 0, true);
@@ -66,10 +65,10 @@ public class MusicListFragment extends Fragment {
         }
     };
 
-    private void createTableFromDatabase () {
+    private void createAllItemsInDatabase () {
 
         // Initialize and make query
-        String listQuery = baseQuery+" ORDER BY Time DESC";
+        String listQuery = Constants.LISTEN_QUERY+" ORDER BY Time DESC";
         Cursor cursor = db.rawQuery(listQuery, null);
 
         // Iterate through query

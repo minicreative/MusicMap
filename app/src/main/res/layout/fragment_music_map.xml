@@ -1,12 +1,5 @@
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<com.google.android.gms.maps.MapView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mapView"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context="values.MusicMapFragment">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:text="Music view!" />
-
-</FrameLayout>
+    android:layout_height="match_parent" />
