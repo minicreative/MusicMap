@@ -1,19 +1,12 @@
 package values;
 
 import android.content.Context;
-import android.graphics.drawable.Drawable;
-import android.text.format.DateUtils;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.nostra13.universalimageloader.core.ImageLoader;
-import com.squareup.picasso.Picasso;
 
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
